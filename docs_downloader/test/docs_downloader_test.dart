@@ -1,4 +1,4 @@
-// import 'package:website_downloader/website_downloader.dart';
+// import 'package:docs_downloader/docs_downloader.dart';
 // import 'package:test/test.dart';
 
 // void main() {

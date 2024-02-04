@@ -8,6 +8,7 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
+  html: ^0.15.4
   mime: ^1.0.4
 
 dev_dependencies:
