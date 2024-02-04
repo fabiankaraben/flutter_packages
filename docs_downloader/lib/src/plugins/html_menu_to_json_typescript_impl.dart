@@ -69,7 +69,7 @@ class HtmlMenuToJsonTypeScriptImpl implements HtmlMenuToJsonPlugin {
   @override
   Future<void> saveJsonMenu(
     String stringJsonMenu,
-    Directory downloadDirectory,
+    Directory htmlDownloadsDir,
     String websiteUrl,
     int menuIdx,
   ) async {
@@ -96,7 +96,7 @@ class HtmlMenuToJsonTypeScriptImpl implements HtmlMenuToJsonPlugin {
 
     const encoder = JsonEncoder.withIndent('  ');
 
-    final path = p.join(downloadDirectory.path, 'menu-$menuIdx.json');
+    final path = p.join(htmlDownloadsDir.path, 'menu-$menuIdx.json');
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsString(encoder.convert(jsonMenu));

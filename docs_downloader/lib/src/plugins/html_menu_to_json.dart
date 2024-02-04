@@ -10,7 +10,7 @@ abstract class HtmlMenuToJsonPlugin {
   ///
   Future<void> saveJsonMenu(
     String stringJsonMenu,
-    Directory downloadDirectory,
+    Directory htmlDownloadsDir,
     String websiteUrl,
     int menuIdx,
   );

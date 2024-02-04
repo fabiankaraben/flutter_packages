@@ -13,26 +13,22 @@ import 'package:path/path.dart' as p;
 class DocsDownloader {
   ///
   DocsDownloader({
-    required this.downloadDirectory,
-    this.removePrevDownloadDir = true,
+    required this.htmlDownloadsDir,
   });
 
   ///
-  final Directory downloadDirectory;
-
-  ///
-  final bool removePrevDownloadDir;
+  final Directory htmlDownloadsDir;
 
   /// Delete previous downloaded content for this website.
-  Future<void> deletePreviousDownloadDirectory() async {
-    if (downloadDirectory.existsSync()) await downloadDirectory.delete(recursive: true);
+  Future<void> deletePreviousHtmlDownloadsDirectory() async {
+    if (htmlDownloadsDir.existsSync()) await htmlDownloadsDir.delete(recursive: true);
   }
 
   ///
   Future<List<String>> downloadGetSaveMenuPaths({
     required Uri menuPage,
     required String containerQuerySelector,
-    required Directory downloadDirectory,
+    required Directory htmlDownloadsDir,
     required String websiteUrl,
     required int menuIndex,
   }) async {
@@ -57,7 +53,7 @@ class DocsDownloader {
       }
       if (menuConverter != null) {
         stringJsonMenu = menuConverter.convertMenuToJson(menuEl, menuPage.path);
-        await menuConverter.saveJsonMenu(stringJsonMenu, downloadDirectory, websiteUrl, menuIndex);
+        await menuConverter.saveJsonMenu(stringJsonMenu, htmlDownloadsDir, websiteUrl, menuIndex);
       }
     }
 
@@ -98,29 +94,96 @@ class DocsDownloader {
   }
 
   ///
-  Future<void> downloadFullPage(String pageFullPath, String websiteUrl) async {
+  Future<void> downloadFullPage(
+    String pageFullPath,
+    String websiteUrl,
+    String contentContainerQuerySelector,
+  ) async {
     final html = await _downloadHtml(Uri.parse(pageFullPath));
 
     final document = parse(html);
 
-    for (final anchor in document.body!.querySelectorAll('a')) {
+    //
+    for (final anchor in document.body!.querySelectorAll('$contentContainerQuerySelector a')) {
       anchor.attributes['href'] = getPathWithoutArchiveOrg(anchor.attributes['href'] ?? '');
+    }
+
+    // Download images.
+    for (final img in document.body!.querySelectorAll('$contentContainerQuerySelector img')) {
+      if (img.attributes['src'] == null) continue;
+
+      final imgSrc = img.attributes['src']!;
+      if (imgSrc.startsWith('/') && !imgSrc.startsWith('/web/20')) {
+        img.attributes['src'] = '$websiteUrl$imgSrc';
+      } else if (!imgSrc.startsWith('/') && !imgSrc.startsWith('http')) {
+        img.attributes['src'] = '$websiteUrl/$imgSrc';
+      }
+
+      final sourceUri = Uri.parse(
+        img.attributes['src']!.startsWith('/web/20')
+            ? 'https://web.archive.org${img.attributes['src']!}'
+            : img.attributes['src']!,
+      );
+
+      final imgPath = leftCleanSourcePath(
+        getPathWithoutArchiveOrg(img.attributes['src']!),
+        websiteUrl,
+      );
+
+      final file = File(p.join(htmlDownloadsDir.path, 'assets', imgPath.substring(1)));
+
+      if (!file.existsSync()) {
+        late http.Response response;
+        var attemptCount = 0;
+        while (attemptCount < 50) {
+          try {
+            response = await http.get(sourceUri);
+            print('${response.statusCode} $sourceUri');
+
+            if (response.statusCode == 200) {
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(response.bodyBytes);
+              break;
+            }
+          } on http.ClientException {
+            print('ClientException: $sourceUri');
+            await Future<void>.delayed(const Duration(minutes: 1));
+          } catch (e) {
+            rethrow;
+          }
+          attemptCount++;
+        }
+      }
+
+      //
+      img.attributes['src'] = '/assets$imgPath';
     }
 
     await _saveHtml(
       document.outerHtml,
       leftCleanSourcePath(getPathWithoutArchiveOrg(pageFullPath), websiteUrl),
     );
-
-    await Future<void>.delayed(const Duration(seconds: 1));
   }
 
   Future<String> _downloadHtml(Uri uri) async {
-    final response = await http.get(uri);
+    late http.Response response;
+    var attemptCount = 0;
+    while (attemptCount < 50) {
+      try {
+        response = await http.get(uri);
+        print('${response.statusCode} ${uri.path}');
 
-    if (response.statusCode != 200) return '';
+        return response.statusCode == 200 ? utf8.decode(response.bodyBytes) : '';
+      } on http.ClientException {
+        print('ClientException: ${uri.path}');
+        await Future<void>.delayed(const Duration(minutes: 1));
+      } catch (e) {
+        rethrow;
+      }
+      attemptCount++;
+    }
 
-    return utf8.decode(response.bodyBytes);
+    return '';
   }
 
   Future<void> _saveHtml(String htmlContent, String pagePath) async {
@@ -135,9 +198,7 @@ class DocsDownloader {
 
     if (!path.endsWith('.html')) path += '.html';
 
-    path = p.join(downloadDirectory.path, path);
-
-    final file = File(path);
+    final file = File(p.join(htmlDownloadsDir.path, path));
     await file.parent.create(recursive: true);
     await file.writeAsString(htmlContent);
   }
