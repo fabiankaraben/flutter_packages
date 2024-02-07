@@ -138,7 +138,7 @@ class DocsDownloader {
         while (attemptCount < 50) {
           try {
             response = await http.get(sourceUri);
-            print('${response.statusCode} $sourceUri');
+            // print('${response.statusCode} $sourceUri');
 
             if (response.statusCode == 200) {
               await file.parent.create(recursive: true);
@@ -146,7 +146,7 @@ class DocsDownloader {
               break;
             }
           } on http.ClientException {
-            print('ClientException: $sourceUri');
+            // print('ClientException: $sourceUri');
             await Future<void>.delayed(const Duration(minutes: 1));
           } catch (e) {
             rethrow;
@@ -171,11 +171,11 @@ class DocsDownloader {
     while (attemptCount < 50) {
       try {
         response = await http.get(uri);
-        print('${response.statusCode} ${uri.path}');
+        // print('${response.statusCode} ${uri.path}');
 
         return response.statusCode == 200 ? utf8.decode(response.bodyBytes) : '';
       } on http.ClientException {
-        print('ClientException: ${uri.path}');
+        // print('ClientException: ${uri.path}');
         await Future<void>.delayed(const Duration(minutes: 1));
       } catch (e) {
         rethrow;

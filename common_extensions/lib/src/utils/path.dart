@@ -1,11 +1,21 @@
 import 'dart:io';
 
 /// Clean a source path leaving only the relative part.
-String leftCleanSourcePath(String pagePath, String fullPath) {
+String leftCleanSourcePath(String pagePath, String absolutePathPart) {
   // Get just the relative part for source paths.
-  if (pagePath.startsWith(fullPath)) return pagePath.substring(fullPath.length);
+  if (pagePath.startsWith(absolutePathPart)) return pagePath.substring(absolutePathPart.length);
 
   return pagePath;
+}
+
+/// Remove query parameters.
+String rightCleanSourcePath(String pagePath) {
+  return pagePath.split('#').first;
+}
+
+/// Remove authority (protocol + host) and query parameters.
+String leftRightCleanSourcePath(String pagePath, String absolutePathPart) {
+  return leftCleanSourcePath(rightCleanSourcePath(pagePath), absolutePathPart);
 }
 
 /// Remove the local part of a downloaded HTML file, leaving just the relative part.
