@@ -1,10 +1,11 @@
 import 'dart:io';
 
+import 'package:common_extensions/directory_extension.dart';
 import 'package:common_extensions/html_extension.dart';
 import 'package:common_extensions/utils.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart';
-import 'package:html_to_markdown/src/plugins/typescript.dart';
+import 'package:html_to_markdown/src/html_to_markdown/plugins/typescript.dart';
 import 'package:path/path.dart' as p;
 
 /// HTML to Markdown converter.
@@ -43,6 +44,12 @@ class HtmlToMarkdown {
     if (mdConversionsDir.existsSync()) await mdConversionsDir.delete(recursive: true);
 
     await _processDirectory(htmlDownloadsDir);
+
+    // Copy all assets.
+    final htmlAssetsDir = Directory(p.join(htmlDownloadsDir.path, 'assets'));
+    if (htmlAssetsDir.existsSync()) {
+      await htmlAssetsDir.copyContent(Directory(p.join(mdConversionsDir.path, 'assets')));
+    }
 
     return _processedPathsTitlesDescriptions;
   }
