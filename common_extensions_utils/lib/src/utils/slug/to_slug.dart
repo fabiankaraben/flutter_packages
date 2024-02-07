@@ -1,6 +1,6 @@
 // ignore_for_file: join_return_with_assignment
 
-import 'package:common_extensions/src/utils/slug/replacements.dart';
+import 'package:common_extensions_utils/src/utils/slug/replacements.dart';
 
 final _dupeSpaceRegExp = RegExp(r'\s{2,}');
 final _punctuationRegExp = RegExp(r'[^\w\s-]');

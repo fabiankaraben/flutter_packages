@@ -9,8 +9,8 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
-  common_extensions:
-    path: ../common_extensions
+  common_extensions_utils:
+    path: ../common_extensions_utils
   freezed_annotation: ^2.4.1
   html: ^0.15.4
   mime: ^1.0.4

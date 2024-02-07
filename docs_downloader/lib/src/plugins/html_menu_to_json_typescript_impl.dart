@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:common_extensions/html_extension.dart';
-import 'package:common_extensions/utils.dart';
+import 'package:common_extensions_utils/html_extension.dart';
+import 'package:common_extensions_utils/utils.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json.dart';
 import 'package:docs_downloader/src/utils/path.dart';
 import 'package:html/dom.dart';

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:common_extensions/utils.dart';
+import 'package:common_extensions_utils/utils.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/data_providers/menu_item_data_provider.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/models/menu_item.dart';
 import 'package:path/path.dart' as p;
