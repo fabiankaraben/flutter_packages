@@ -290,6 +290,7 @@ class MarkdownToHugoContent {
     return mdSB.toString();
   }
 
+  // ignore: unused_element
   Future<void> _adaptAllLinkPaths(
     String websiteUrl,
     Page page,
