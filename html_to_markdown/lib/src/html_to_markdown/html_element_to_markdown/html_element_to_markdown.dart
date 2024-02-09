@@ -1,95 +1,30 @@
-import 'dart:io';
-
-import 'package:common_extensions_utils/directory_extension.dart';
 import 'package:common_extensions_utils/html_extension.dart';
-import 'package:common_extensions_utils/utils.dart';
 import 'package:html/dom.dart';
-import 'package:html/parser.dart';
-import 'package:html_to_markdown/src/html_to_markdown/plugins/typescript.dart';
-import 'package:path/path.dart' as p;
+import 'package:html_to_markdown/src/html_to_markdown/html_element_to_markdown/plugins/typescript.dart';
+
+///
+enum HtmlElementToMarkdownPlugin {
+  ///
+  none,
+
+  ///
+  typescript,
+}
 
 /// HTML to Markdown converter.
-class HtmlToMarkdown {
-  ///
-  HtmlToMarkdown({
-    required this.htmlDownloadsDir,
-    required this.mdConversionsDir,
-  });
-
-  ///
-  final Directory htmlDownloadsDir;
-
-  ///
-  final Directory mdConversionsDir;
+class HtmlElementToMarkdown {
+  late HtmlElementToMarkdownPlugin _plugin;
 
   /// Class level global context for the recursive execution of [_htmlToMarkdown].
   final Map<String, dynamic> _context = {};
 
-  final _processedPathsTitlesDescriptions = <(String, String, String)>{};
-
-  late String _websiteUrl;
-  late String _contentContainerQuerySelector;
-  late String? _specialH1QuerySelector;
-
-  /// Returns a set of page related info in this format: Set<(path, title)>.
-  Future<Set<(String, String, String)>> convertFullWebsite(
-    String websiteUrl,
-    String contentContainerQuerySelector,
-    String? specialH1QuerySelector,
-  ) async {
-    _websiteUrl = websiteUrl;
-    _contentContainerQuerySelector = contentContainerQuerySelector;
-    _specialH1QuerySelector = specialH1QuerySelector;
-
-    if (mdConversionsDir.existsSync()) await mdConversionsDir.delete(recursive: true);
-
-    await _processDirectory(htmlDownloadsDir);
-
-    // Copy all assets.
-    final htmlAssetsDir = Directory(p.join(htmlDownloadsDir.path, 'assets'));
-    if (htmlAssetsDir.existsSync()) {
-      await htmlAssetsDir.copyContent(Directory(p.join(mdConversionsDir.path, 'assets')));
-    }
-
-    return _processedPathsTitlesDescriptions;
-  }
-
-  Future<void> _processDirectory(Directory directory) async {
-    for (final entity in directory.listSync()) {
-      if (entity is File && entity.path.endsWith('.html')) {
-        await _processHtmlFile(entity);
-      } else if (entity is Directory) {
-        await _processDirectory(entity);
-      }
-    }
-  }
-
-  Future<void> _processHtmlFile(File file) async {
-    final html = await file.readAsString();
-
-    final document = parse(html);
-
-    if (document.body == null) return;
-
-    // Get content container element.
-    final element = document.body!.querySelector(_contentContainerQuerySelector);
-
-    if (element == null) return;
-
-    var md = _htmlToMarkdown(element, 0);
-
-    // Remove the last double line break.
-    md = md.substring(0, md.length - 1);
-
-    if (_specialH1QuerySelector != null) {
-      final h1Element = document.body!.querySelector(_specialH1QuerySelector!)!;
-      final h1Md = _htmlToMarkdown(h1Element, 0);
-      md = '# $h1Md\n\n$md';
-    }
-
-    _registerProcessedPageData(document, file.path);
-
-    await _saveMarkdown(md, file.path);
+  ///
+  String convert({
+    required Element element,
+    required HtmlElementToMarkdownPlugin plugin,
+  }) {
+    _plugin = plugin;
+    return _htmlToMarkdown(element, 0);
   }
 
   String _htmlToMarkdown(Element element, int level) {
@@ -118,7 +53,7 @@ class HtmlToMarkdown {
         } else if (el.localName == 'figure') {
           md.write(_convertFigureToMd(el, level));
         } else if (el.localName == 'pre') {
-          if (_websiteUrl.contains('typescript')) {
+          if (_plugin == HtmlElementToMarkdownPlugin.typescript) {
             md.write(HtmlToMdTypeScript.convertPreToMd(el, level, _htmlToMarkdown, _context));
           } else {
             md.write(_convertPreToMd(el, level));
@@ -167,7 +102,7 @@ class HtmlToMarkdown {
         // Elements from plugins.
         //
 
-        if (_websiteUrl.contains('typescript')) {
+        if (_plugin == HtmlElementToMarkdownPlugin.typescript) {
           HtmlToMdTypeScript().addExtraConvertions(el, level, md, _htmlToMarkdown, _context);
         }
       }
@@ -538,31 +473,5 @@ class HtmlToMarkdown {
     final post = '${insidePre ? '' : '`'}${level == 0 ? '\n\n' : ''}';
 
     return '$pre$inner$post';
-  }
-
-  // Register processed data.
-  void _registerProcessedPageData(Document document, String pagePath) {
-    final title = (document.head!.querySelector('title')?.text ?? '').replaceAll(': ', ' · ');
-    final description =
-        (document.head!.querySelector('meta[name="description"]')?.attributes['content'] ?? '')
-            .replaceAll(': ', ' · ');
-
-    _processedPathsTitlesDescriptions.add(
-      (
-        leftCleanLocalHtmlFilePath(pagePath, htmlDownloadsDir),
-        title,
-        description,
-      ),
-    );
-  }
-
-  Future<void> _saveMarkdown(String md, String pagePath) async {
-    final path = cleanLocalHtmlFilePath(pagePath, htmlDownloadsDir);
-
-    final file = File(
-      p.join(mdConversionsDir.path, '${path.substring(1)}.md'),
-    );
-    await file.parent.create(recursive: true);
-    await file.writeAsString(md);
   }
 }
