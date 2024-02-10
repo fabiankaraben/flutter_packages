@@ -124,18 +124,16 @@ class HtmlElementToMarkdown {
     //
 
     var text = '';
-    inner = inner.replaceAll('[]', '');
     if (inner.contains('](')) {
-      final start = inner.indexOf('[');
-      text = inner.substring(start + 1, inner.indexOf('](', start));
+      final middle = inner.indexOf('](');
+      final start = inner.lastIndexOf('[', middle);
+      final end = inner.indexOf(')', middle);
+      final linkText = inner.substring(start + 1, middle).trim();
+      text = linkText.isNotEmpty
+          ? linkText
+          : '${inner.substring(0, start)}${inner.substring(end + 1, inner.length)}';
     } else {
-      if (inner.contains('(#')) {
-        final start = inner.indexOf('(#');
-        final end = inner.indexOf(')', start);
-        text = inner.replaceFirst(inner.substring(start, end + 1), '');
-      } else {
-        text = inner;
-      }
+      text = inner;
     }
 
     //

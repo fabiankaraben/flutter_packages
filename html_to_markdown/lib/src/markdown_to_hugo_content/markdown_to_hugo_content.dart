@@ -1,26 +1,22 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:common_extensions_utils/directory_extension.dart';
 import 'package:common_extensions_utils/utils.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/models/menu_item.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/models/page.dart';
-import 'package:html_to_markdown/src/markdown_to_hugo_content/data/repositories/menu_items_repository.dart';
-import 'package:html_to_markdown/src/markdown_to_hugo_content/data/repositories/pages_repository.dart';
+import 'package:html_to_markdown/src/markdown_to_hugo_content/data/repositories/menu_items_and_pages_repository.dart';
 import 'package:path/path.dart' as p;
 
 ///
 class MarkdownToHugoContent {
   ///
   MarkdownToHugoContent({
-    required this.htmlDownloadsDir,
     required this.mdConversionsDir,
     required this.hugoContentBaseDir,
     required this.websiteBuildDirectoryName,
     this.versionBuildDirectoryName,
   });
-
-  ///
-  final Directory htmlDownloadsDir;
 
   ///
   final Directory mdConversionsDir;
@@ -47,22 +43,32 @@ class MarkdownToHugoContent {
   late List<String> _inOrderPathPaths;
 
   ///
+  late String _websiteUrl;
+
+  ///
   Future<void> convertFullWebsite({
     required String websiteTitle,
     required String websiteUrl,
   }) async {
-    // Get required data.
-    _menuItems = await MenuItemsRepository().menuItems(
-      htmlDownloadsDir: htmlDownloadsDir,
-      websiteTitle: websiteTitle,
-    );
-    _pages = await PagesRepository().pages(htmlDownloadsDir: htmlDownloadsDir);
+    _websiteUrl = websiteUrl;
 
-    // for (final menuItem in menuItems) {
+    final hasVersion = versionBuildDirectoryName != null;
+
+    // Get required data.
+    final (ms, ps) = await MenuItemsAndPagesRepository().menuItemsAndPages(
+      mdConversionsDir: mdConversionsDir,
+      websiteBuildDirectoryName: websiteBuildDirectoryName,
+      websiteTitle: websiteTitle,
+      hasVersion: hasVersion,
+    );
+    _menuItems = ms;
+    _pages = ps;
+
+    // for (final menuItem in _menuItems) {
     //   print(menuItem);
     // }
 
-    // for (final page in pages) {
+    // for (final page in _pages) {
     //   print(page);
     // }
 
@@ -82,7 +88,10 @@ class MarkdownToHugoContent {
     if (rootItemDirectory.existsSync()) await rootItemDirectory.delete(recursive: true);
 
     // Recursively create menu directories, subdirectories and its _index.md files.
-    await _addIndexFileToDirectory(rootItemDirectory, rootMenuItem);
+    await _addIndexFileToDirectory(
+      hasVersion ? rootItemDirectory.parent : rootItemDirectory,
+      rootMenuItem,
+    );
 
     //
     // Build content files.
@@ -91,26 +100,34 @@ class MarkdownToHugoContent {
     for (final page in _pages) {
       if (_menuItemDirectoriesById.containsKey(page.menuItemId)) {
         final enFileRelPath =
-            '${cleanLocalHtmlFilePath(page.path, htmlDownloadsDir).substring(1)}.md';
+            '${cleanLocalHtmlFilePath(page.path, mdConversionsDir).substring(1)}.md';
+        final mdFile = File(p.join(mdConversionsDir.path, enFileRelPath));
+
+        if (!mdFile.existsSync()) continue;
+
         await _processMdFile(
           page,
-          File(p.join(mdConversionsDir.path, enFileRelPath)),
+          mdFile,
           _menuItemDirectoriesById[page.menuItemId]!,
         );
       }
     }
 
-    //
-    // Adapt all links.
-    //
-
-    // for (final page in _pages) {
-    //   await _adaptAllLinkPaths(
-    //     websiteUrl,
-    //     page,
-    //     _menuItemDirectoriesById[page.menuItemId]!,
-    //   );
-    // }
+    // Copy all assets.
+    final htmlAssetsDir = Directory(p.join(mdConversionsDir.path, 'assets'));
+    if (htmlAssetsDir.existsSync()) {
+      final staticAssetsDir = Directory(
+        p.join(
+          hugoContentBaseDir.parent.path,
+          'static',
+          'assets',
+          websiteBuildDirectoryName,
+          versionBuildDirectoryName,
+        ),
+      );
+      if (staticAssetsDir.existsSync()) await staticAssetsDir.delete(recursive: true);
+      await htmlAssetsDir.copyContent(staticAssetsDir);
+    }
   }
 
   Future<void> _processMdFile(Page page, File sourceFile, Directory finalFileDirectory) async {
@@ -141,6 +158,13 @@ class MarkdownToHugoContent {
       versionBuildDirectoryName!,
     );
 
+    // Adapt all links.
+    md = await _adaptAllLinkPaths(
+      md,
+      websiteBuildDirectoryName,
+      versionBuildDirectoryName!,
+    );
+
     await _saveMarkdown(page, md, finalFileDirectory);
   }
 
@@ -153,7 +177,7 @@ class MarkdownToHugoContent {
       if (idxOfPath < 1 || idxOfPath == _inOrderPathPaths.length - 1) return null;
       final prevPage = _pages.firstWhere((e) => e.path == _inOrderPathPaths[idxOfPath - 1]);
       if (_menuItemDirectoriesById.containsKey(prevPage.menuItemId)) {
-        return 'prev: ${_getFullSlugPath(prevPage)}';
+        return 'prev: ${_getFullSlugPagePath(prevPage.path)}';
       }
     }
     return null;
@@ -168,25 +192,14 @@ class MarkdownToHugoContent {
       if (idxOfPath < 1 || idxOfPath == _inOrderPathPaths.length - 1) return null;
       final nextPage = _pages.firstWhere((e) => e.path == _inOrderPathPaths[idxOfPath + 1]);
       if (_menuItemDirectoriesById.containsKey(nextPage.menuItemId)) {
-        return 'next: ${_getFullSlugPath(nextPage)}';
+        return 'next: ${_getFullSlugPagePath(nextPage.path)}';
       }
     }
     return null;
   }
 
-  String _getFullSlugPath(Page page) {
-    if (page.menuItemId == null) return '';
-    String find(int menuItemId) {
-      final item = _menuItems.firstWhere((e) => e.id == menuItemId);
-      if (item.parentId == null) return '/${item.slug}';
-      return '${find(item.parentId!)}/${item.slug}';
-    }
-
-    return '${find(page.menuItemId!)}/${page.slug}';
-  }
-
   Future<List<String>> _getInOrderPagePathsFromMenuJsonFile() async {
-    final path = p.join(htmlDownloadsDir.path, 'menu-0.json');
+    final path = p.join(mdConversionsDir.path, 'menu-0.json');
 
     final json = List<Map<dynamic, dynamic>>.from(
       jsonDecode(await File(path).readAsString()) as Iterable,
@@ -277,7 +290,8 @@ class MarkdownToHugoContent {
       mdSB.writeAll(
         [
           md.substring(preTextStart, pathStart),
-          '/assets/$websiteBuildDirectoryName/$websiteBuildDirectoryName',
+          p.join('/assets', websiteBuildDirectoryName, versionBuildDirectoryName),
+          '/',
           imgPaths[pathIdx].substring('/assets/'.length),
         ],
       );
@@ -290,19 +304,12 @@ class MarkdownToHugoContent {
     return mdSB.toString();
   }
 
-  // ignore: unused_element
-  Future<void> _adaptAllLinkPaths(
-    String websiteUrl,
-    Page page,
-    Directory finalFileDirectory,
+  //
+  Future<String> _adaptAllLinkPaths(
+    String md,
+    String websiteBuildDirectoryName,
+    String versionBuildDirectoryName,
   ) async {
-    //
-    // Get.
-    //
-
-    final file = File(p.join(finalFileDirectory.path, '${page.slug}.md'));
-    final md = await file.readAsString();
-
     //
     // Replace translated paths on spanish content.
     //
@@ -323,28 +330,27 @@ class MarkdownToHugoContent {
         }
       }
 
-      if (isImage) {
+      if (isImage || path.startsWith('http')) {
         mdSB.writeAll([
-          // Image (keep with no modifications).
+          // Image or external path (keep with no modifications).
           md.substring(preTextStart, pathStart),
           path,
         ]);
       } else {
-        final cleanPath = leftRightCleanSourcePath(path, websiteUrl);
+        final cleanPath = rightCleanSourcePath(path);
         mdSB.writeAll(
-          // fullTranslatedPagePaths.contains(cleanPath) && cleanPath.startsWith('/')
-          //     ?
-          [
-            // Full translated path.
-            md.substring(preTextStart, pathStart),
-            _getFullSlugPagePath(cleanPath),
-          ],
-          // : [
-          //     // Not full translated path.
-          //     md.substring(preTextStart, pathStart - 2),
-          //     ' ↗](',
-          //     if (path.startsWith('/')) '${website.sourceUrl}$path' else path,
-          //   ],
+          _pages.any((e) => e.path == path)
+              ? [
+                  // Internal path.
+                  md.substring(preTextStart, pathStart),
+                  _getFullSlugPagePath(cleanPath),
+                ]
+              : [
+                  // Internal path not included in the menu.
+                  md.substring(preTextStart, pathStart - 2),
+                  ' ↗](',
+                  '$_websiteUrl$path',
+                ],
         );
       }
       preTextStart = pathEnd;
@@ -352,13 +358,10 @@ class MarkdownToHugoContent {
     }
     mdSB.write(md.substring(preTextStart, md.length));
 
-    //
-    // Save.
-    //
-
-    await _saveMarkdown(page, mdSB.toString(), finalFileDirectory);
+    return mdSB.toString();
   }
 
+  // [path] must be a root relative path without query and without fragment.
   String _getFullSlugPagePath(String path) {
     final page = _pages.firstWhere((e) => e.path == path);
     var menuItem = _menuItems.firstWhere((e) => e.id == page.menuItemId);
@@ -369,4 +372,15 @@ class MarkdownToHugoContent {
     }
     return '/${slugs.reversed.join('/')}';
   }
+
+  // String _getFullSlugPath(Page page) {
+  //   if (page.menuItemId == null) return '';
+  //   String find(int menuItemId) {
+  //     final item = _menuItems.firstWhere((e) => e.id == menuItemId);
+  //     if (item.parentId == null) return '/${item.slug}';
+  //     return '${find(item.parentId!)}/${item.slug}';
+  //   }
+
+  //   return '${find(page.menuItemId!)}/${page.slug}';
+  // }
 }

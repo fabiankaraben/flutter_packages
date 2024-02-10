@@ -110,10 +110,9 @@ class HtmlToMarkdown {
 
   // Register processed data.
   void _registerProcessedPageData(Document document, String pagePath) {
-    final title = (document.head!.querySelector('title')?.text ?? '').replaceAll(': ', ' · ');
+    final title = document.head!.querySelector('title')?.text ?? '';
     final description =
-        (document.head!.querySelector('meta[name="description"]')?.attributes['content'] ?? '')
-            .replaceAll(': ', ' · ');
+        document.head!.querySelector('meta[name="description"]')?.attributes['content'] ?? '';
 
     _processedPagesData.add(
       {

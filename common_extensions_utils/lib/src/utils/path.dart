@@ -8,9 +8,9 @@ String leftCleanSourcePath(String pagePath, String absolutePathPart) {
   return pagePath;
 }
 
-/// Remove query parameters.
+/// Remove query and fragment parts.
 String rightCleanSourcePath(String pagePath) {
-  return pagePath.split('#').first;
+  return pagePath.split('#').first.split('?').first;
 }
 
 /// Remove authority (protocol + host) and query parameters.

@@ -357,7 +357,9 @@ class DocsDownloader {
       }
     }
 
-    if (addDotHtmlIfNotContains && !path.endsWith('.html')) path += '.html';
+    if (addDotHtmlIfNotContains && !path.endsWith('.html') && !path.endsWith('/')) {
+      path += '.html';
+    }
 
     // Normalize before restore the query and fragment parts.
     path = p.normalize(path);
