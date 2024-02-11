@@ -133,8 +133,8 @@ class MarkdownToHugoContent {
   Future<void> _processMdFile(Page page, File sourceFile, Directory finalFileDirectory) async {
     var md = await sourceFile.readAsString();
 
-    final prevPageParameter = _prevPageParameter(page);
-    final nextPageParameter = _nextPageParameter(page);
+    final prevPageParameter = _frontMatterPrevParameterValue(page);
+    final nextPageParameter = _frontMatterNextParameterValue(page);
 
     // Add new front matter.
     md = [
@@ -144,8 +144,8 @@ class MarkdownToHugoContent {
       'description: "${page.description}"',
       'weight: ${page.weight}',
       'type: docs',
-      if (prevPageParameter != null) prevPageParameter,
-      if (nextPageParameter != null) nextPageParameter,
+      if (prevPageParameter != null) 'prev: $prevPageParameter',
+      if (nextPageParameter != null) 'next: $nextPageParameter',
       '---',
       '',
       md,
@@ -168,7 +168,7 @@ class MarkdownToHugoContent {
     await _saveMarkdown(page, md, finalFileDirectory);
   }
 
-  String? _prevPageParameter(Page page) {
+  String? _frontMatterPrevParameterValue(Page page) {
     final minWeightPage = _pages
         .where((e) => e.menuItemId == page.menuItemId)
         .reduce((current, next) => current.weight < next.weight ? current : next);
@@ -177,13 +177,13 @@ class MarkdownToHugoContent {
       if (idxOfPath < 1 || idxOfPath == _inOrderPathPaths.length - 1) return null;
       final prevPage = _pages.firstWhere((e) => e.path == _inOrderPathPaths[idxOfPath - 1]);
       if (_menuItemDirectoriesById.containsKey(prevPage.menuItemId)) {
-        return 'prev: ${_getFullSlugPagePath(prevPage.path)}';
+        return _getFullSlugPagePath(prevPage.path);
       }
     }
     return null;
   }
 
-  String? _nextPageParameter(Page page) {
+  String? _frontMatterNextParameterValue(Page page) {
     final maxWeightPage = _pages
         .where((e) => e.menuItemId == page.menuItemId)
         .reduce((current, next) => current.weight > next.weight ? current : next);
@@ -192,7 +192,7 @@ class MarkdownToHugoContent {
       if (idxOfPath < 1 || idxOfPath == _inOrderPathPaths.length - 1) return null;
       final nextPage = _pages.firstWhere((e) => e.path == _inOrderPathPaths[idxOfPath + 1]);
       if (_menuItemDirectoriesById.containsKey(nextPage.menuItemId)) {
-        return 'next: ${_getFullSlugPagePath(nextPage.path)}';
+        return _getFullSlugPagePath(nextPage.path);
       }
     }
     return null;
@@ -242,6 +242,8 @@ class MarkdownToHugoContent {
       }
     }
 
+    final redirect = _frontMatterRedirectParameterValue(menuItem);
+
     final indexFile = File(p.join(directory.path, '_index.md'));
     await indexFile.parent.create(recursive: true);
     await indexFile.writeAsString(
@@ -250,11 +252,38 @@ class MarkdownToHugoContent {
         'title: ${menuItem.title}',
         if (menuItem.parentId != null) 'weight: ${menuItem.weight}',
         'type: docs',
+        if (redirect != null) 'redirect: $redirect',
         'noindex: true',
         '---',
         '',
       ].join('\n'),
     );
+  }
+
+  String? _frontMatterRedirectParameterValue(MenuItem menuItem) {
+    var levelCount = 0;
+    var currentMenuItem = menuItem;
+
+    while (levelCount < 15) {
+      levelCount++;
+      final menuItemPages = _pages.where((e) => e.menuItemId == currentMenuItem.id);
+      if (menuItemPages.isEmpty) {
+        final menuSubitems = _menuItems.where((e) => e.parentId == currentMenuItem.id);
+        if (menuSubitems.isEmpty) break;
+        currentMenuItem = menuSubitems.reduce(
+          (current, next) => current.weight < next.weight ? current : next,
+        );
+        continue;
+      }
+
+      final minWeightPage = menuItemPages.reduce(
+        (current, next) => current.weight < next.weight ? current : next,
+      );
+
+      return _getFullSlugPagePath(minWeightPage.path);
+    }
+
+    return null;
   }
 
   /// Adapt all asset paths for this page.
