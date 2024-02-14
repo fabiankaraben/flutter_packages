@@ -19,6 +19,8 @@ class DocsDownloader {
   ///
   final Directory htmlDownloadsDir;
 
+  final _allMenuPaths = <String>{};
+
   /// Delete previous downloaded content for this website.
   Future<void> deletePreviousHtmlDownloadsDirectory() async {
     if (htmlDownloadsDir.existsSync()) await htmlDownloadsDir.delete(recursive: true);
@@ -27,7 +29,7 @@ class DocsDownloader {
   /// Returns a list of page paths to download.
   Future<List<String>> downloadGetSaveMenuPaths({
     /// Absolute path of the page where the docs index menu is located.
-    required Uri menuPage,
+    required String menuPagePath,
 
     /// CSS query selector to search the HTML element that contains the menu.
     required String containerQuerySelector,
@@ -44,7 +46,7 @@ class DocsDownloader {
     // Remove trailing slash if it exists
     if (websiteUrl.endsWith('/')) websiteUrl = websiteUrl.substring(0, websiteUrl.length - 1);
 
-    final html = await _downloadHtml(menuPage);
+    final html = await _downloadHtml(Uri.parse(menuPagePath));
 
     final document = parse(html);
 
@@ -63,7 +65,7 @@ class DocsDownloader {
     if (menuEl != null) {
       HtmlMenuToJsonPlugin? menuConverter;
 
-      if (menuPage.path.contains('typescriptlang.org')) {
+      if (menuPagePath.contains('typescriptlang.org')) {
         menuConverter = HtmlMenuToJsonTypeScriptImpl();
       }
 
@@ -81,7 +83,7 @@ class DocsDownloader {
         jsonDecode(jsonEncode(menuData)) as Iterable,
       );
       await _saveJsonMenu(
-        menuPagePath: menuPage.path,
+        menuPagePath: menuPagePath,
         menuData: menuDataCopy,
         htmlDownloadsDir: htmlDownloadsDir,
         websiteUrl: websiteUrl,
@@ -134,6 +136,9 @@ class DocsDownloader {
             removeQueryPart: true,
           );
           if (!(item['path'] as String).endsWith('.html')) item['path'] = '${item['path']}.html';
+
+          // Register this path.
+          _allMenuPaths.add(item['path'] as String);
         }
         if (item['items'] != null) {
           cleanInOrder(List<Map<dynamic, dynamic>>.from(item['items'] as Iterable));
@@ -357,8 +362,16 @@ class DocsDownloader {
       }
     }
 
-    if (addDotHtmlIfNotContains && !path.endsWith('.html') && !path.endsWith('/')) {
-      path += '.html';
+    if (addDotHtmlIfNotContains && !path.endsWith('.html')) {
+      // Check to avoid cases like /tsconfig/.html or /play/.html, and only
+      // applies to the paths found in the menu.
+      var auxPath = path;
+      if (auxPath.endsWith('/')) auxPath = auxPath.substring(0, auxPath.length - 1);
+      if (!auxPath.endsWith('.html')) auxPath = '$auxPath.html';
+
+      if (_allMenuPaths.contains(auxPath)) {
+        path = auxPath;
+      }
     }
 
     // Normalize before restore the query and fragment parts.

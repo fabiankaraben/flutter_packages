@@ -54,6 +54,12 @@ class MarkdownToHugoContent {
 
     final hasVersion = versionBuildDirectoryName != null;
 
+    // If Hugo 'static' directory exists hugoContentBaseDir is for a final Hugo content,
+    // otherwise it is for another intermediate step, it is an all-in-one directory.
+    final existsHugoStaticDir = Directory(
+      p.join(hugoContentBaseDir.parent.path, 'static'),
+    ).existsSync();
+
     // Get required data.
     final (ms, ps) = await MenuItemsAndPagesRepository().menuItemsAndPages(
       mdConversionsDir: mdConversionsDir,
@@ -85,7 +91,11 @@ class MarkdownToHugoContent {
     );
 
     // Delete previous website content directory.
-    if (rootItemDirectory.existsSync()) await rootItemDirectory.delete(recursive: true);
+    if (existsHugoStaticDir) {
+      if (rootItemDirectory.existsSync()) await rootItemDirectory.delete(recursive: true);
+    } else {
+      await hugoContentBaseDir.delete(recursive: true);
+    }
 
     // Recursively create menu directories, subdirectories and its _index.md files.
     await _addIndexFileToDirectory(
@@ -116,17 +126,44 @@ class MarkdownToHugoContent {
     // Copy all assets.
     final htmlAssetsDir = Directory(p.join(mdConversionsDir.path, 'assets'));
     if (htmlAssetsDir.existsSync()) {
-      final staticAssetsDir = Directory(
-        p.join(
-          hugoContentBaseDir.parent.path,
-          'static',
-          'assets',
-          websiteBuildDirectoryName,
-          versionBuildDirectoryName,
-        ),
-      );
+      final staticAssetsDir = existsHugoStaticDir
+          ? Directory(
+              p.join(
+                hugoContentBaseDir.parent.path,
+                'static',
+                'assets',
+                websiteBuildDirectoryName,
+                versionBuildDirectoryName,
+              ),
+            )
+          : Directory(
+              p.join(hugoContentBaseDir.path, 'assets'),
+            );
       if (staticAssetsDir.existsSync()) await staticAssetsDir.delete(recursive: true);
       await htmlAssetsDir.copyContent(staticAssetsDir);
+    }
+
+    // Copy all menu-x.json files.
+    if (!existsHugoStaticDir) {
+      var menuIndex = 0;
+      var mdMenuFile = File(p.join(mdConversionsDir.path, 'menu-$menuIndex.json'));
+      while (mdMenuFile.existsSync()) {
+        await mdMenuFile.copy(
+          p.join(hugoContentBaseDir.path, 'menu-$menuIndex.json'),
+        );
+        menuIndex++;
+        mdMenuFile = File(p.join(mdConversionsDir.path, 'menu-$menuIndex.json'));
+      }
+    }
+
+    // Copy pages.json file.
+    if (!existsHugoStaticDir) {
+      final mdMenuFile = File(p.join(mdConversionsDir.path, 'pages.json'));
+      if (mdMenuFile.existsSync()) {
+        await mdMenuFile.copy(
+          p.join(hugoContentBaseDir.path, 'pages.json'),
+        );
+      }
     }
   }
 
@@ -155,15 +192,11 @@ class MarkdownToHugoContent {
     md = await _convertAllPageAssetPaths(
       md,
       websiteBuildDirectoryName,
-      versionBuildDirectoryName!,
+      versionBuildDirectoryName,
     );
 
     // Adapt all links.
-    md = await _adaptAllLinkPaths(
-      md,
-      websiteBuildDirectoryName,
-      versionBuildDirectoryName!,
-    );
+    md = await _adaptAllLinkPaths(md);
 
     await _saveMarkdown(page, md, finalFileDirectory);
   }
@@ -290,7 +323,7 @@ class MarkdownToHugoContent {
   Future<String> _convertAllPageAssetPaths(
     String md,
     String websiteBuildDirectoryName,
-    String versionBuildDirectoryName,
+    String? versionBuildDirectoryName,
   ) async {
     //
     // Create a list of all images paths on content.
@@ -334,11 +367,7 @@ class MarkdownToHugoContent {
   }
 
   //
-  Future<String> _adaptAllLinkPaths(
-    String md,
-    String websiteBuildDirectoryName,
-    String versionBuildDirectoryName,
-  ) async {
+  Future<String> _adaptAllLinkPaths(String md) async {
     //
     // Replace translated paths on spanish content.
     //
@@ -401,15 +430,4 @@ class MarkdownToHugoContent {
     }
     return '/${slugs.reversed.join('/')}';
   }
-
-  // String _getFullSlugPath(Page page) {
-  //   if (page.menuItemId == null) return '';
-  //   String find(int menuItemId) {
-  //     final item = _menuItems.firstWhere((e) => e.id == menuItemId);
-  //     if (item.parentId == null) return '/${item.slug}';
-  //     return '${find(item.parentId!)}/${item.slug}';
-  //   }
-
-  //   return '${find(page.menuItemId!)}/${page.slug}';
-  // }
 }
