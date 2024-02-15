@@ -48,19 +48,12 @@ class HtmlToMarkdown {
       }
     }
 
-    // Copy all assets.
-    final htmlAssetsDir = Directory(p.join(htmlDownloadsDir.path, 'assets'));
-    if (htmlAssetsDir.existsSync()) {
-      await htmlAssetsDir.copyContent(Directory(p.join(mdConversionsDir.path, 'assets')));
-    }
-
-    // Copy all menu-x.json files.
-    var menuIndex = 0;
-    var htmlMenuFile = File(p.join(htmlDownloadsDir.path, 'menu-$menuIndex.json'));
-    while (htmlMenuFile.existsSync()) {
-      await htmlMenuFile.copy(p.join(mdConversionsDir.path, 'menu-$menuIndex.json'));
-      menuIndex++;
-      htmlMenuFile = File(p.join(htmlDownloadsDir.path, 'menu-$menuIndex.json'));
+    // Copy website data (assets and JSON files).
+    final websiteDataDir = Directory(p.join(htmlDownloadsDir.path, 'website-data-82361054'));
+    if (websiteDataDir.existsSync()) {
+      await websiteDataDir.copyContent(
+        Directory(p.join(mdConversionsDir.path, 'website-data-82361054')),
+      );
     }
 
     // Save data to the pages.json file.
@@ -137,7 +130,7 @@ class HtmlToMarkdown {
   Future<void> _savePagesJson(List<Map<String, String>> pagesData) async {
     const encoder = JsonEncoder.withIndent('  ');
 
-    final path = p.join(mdConversionsDir.path, 'pages.json');
+    final path = p.join(mdConversionsDir.path, 'website-data-82361054', 'pages.json');
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsString(encoder.convert(pagesData));

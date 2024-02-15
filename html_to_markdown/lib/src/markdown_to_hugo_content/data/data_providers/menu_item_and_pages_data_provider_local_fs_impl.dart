@@ -21,13 +21,17 @@ class MenuItemAndPagesDataProviderLocalFSImpl implements MenuItemAndPagesDataPro
     required String websiteTitle,
     bool hasVersion = false,
   }) async {
-    final menuJsonFile = File(p.join(mdConversionsDir.path, 'menu-0.json'));
+    final menuJsonFile = File(
+      p.join(mdConversionsDir.path, 'website-data-82361054', 'menu-0.json'),
+    );
 
     final menuData = List<Map<dynamic, dynamic>>.from(
       jsonDecode(await menuJsonFile.readAsString()) as Iterable,
     );
 
-    final pagesJsonFile = File(p.join(mdConversionsDir.path, 'pages.json'));
+    final pagesJsonFile = File(
+      p.join(mdConversionsDir.path, 'website-data-82361054', 'pages.json'),
+    );
 
     final pagesData = List<Map<String, dynamic>>.from(
       jsonDecode(await pagesJsonFile.readAsString()) as Iterable,
@@ -83,7 +87,7 @@ class MenuItemAndPagesDataProviderLocalFSImpl implements MenuItemAndPagesDataPro
               weight: weight,
               path: pagePath,
               menuItemId: parentMenuItemId,
-              slug: toSlug(item['title'] as String),
+              slug: p.basenameWithoutExtension(pagePath),
               linkTitle: item['title'] as String,
               description: pageDescription as String,
             ),

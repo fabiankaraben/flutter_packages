@@ -123,46 +123,35 @@ class MarkdownToHugoContent {
       }
     }
 
-    // Copy all assets.
-    final htmlAssetsDir = Directory(p.join(mdConversionsDir.path, 'assets'));
-    if (htmlAssetsDir.existsSync()) {
-      final staticAssetsDir = existsHugoStaticDir
-          ? Directory(
-              p.join(
-                hugoContentBaseDir.parent.path,
-                'static',
-                'assets',
-                websiteBuildDirectoryName,
-                versionBuildDirectoryName,
-              ),
-            )
-          : Directory(
-              p.join(hugoContentBaseDir.path, 'assets'),
-            );
-      if (staticAssetsDir.existsSync()) await staticAssetsDir.delete(recursive: true);
-      await htmlAssetsDir.copyContent(staticAssetsDir);
-    }
+    //
+    // Copy website data directory.
+    //
 
-    // Copy all menu-x.json files.
     if (!existsHugoStaticDir) {
-      var menuIndex = 0;
-      var mdMenuFile = File(p.join(mdConversionsDir.path, 'menu-$menuIndex.json'));
-      while (mdMenuFile.existsSync()) {
-        await mdMenuFile.copy(
-          p.join(hugoContentBaseDir.path, 'menu-$menuIndex.json'),
+      // Copy website data (assets and JSON files).
+      final websiteDataDir = Directory(p.join(mdConversionsDir.path, 'website-data-82361054'));
+      if (websiteDataDir.existsSync()) {
+        await websiteDataDir.copyContent(
+          Directory(p.join(hugoContentBaseDir.path, 'website-data-82361054')),
         );
-        menuIndex++;
-        mdMenuFile = File(p.join(mdConversionsDir.path, 'menu-$menuIndex.json'));
       }
-    }
-
-    // Copy pages.json file.
-    if (!existsHugoStaticDir) {
-      final mdMenuFile = File(p.join(mdConversionsDir.path, 'pages.json'));
-      if (mdMenuFile.existsSync()) {
-        await mdMenuFile.copy(
-          p.join(hugoContentBaseDir.path, 'pages.json'),
+    } else {
+      // Copy all assets.
+      final assetsDir = Directory(
+        p.join(mdConversionsDir.path, 'website-data-82361054', 'assets'),
+      );
+      if (assetsDir.existsSync()) {
+        final staticAssetsDir = Directory(
+          p.join(
+            hugoContentBaseDir.parent.path,
+            'static',
+            'assets',
+            websiteBuildDirectoryName,
+            versionBuildDirectoryName,
+          ),
         );
+        if (staticAssetsDir.existsSync()) await staticAssetsDir.delete(recursive: true);
+        await assetsDir.copyContent(staticAssetsDir);
       }
     }
   }
@@ -232,7 +221,7 @@ class MarkdownToHugoContent {
   }
 
   Future<List<String>> _getInOrderPagePathsFromMenuJsonFile() async {
-    final path = p.join(mdConversionsDir.path, 'menu-0.json');
+    final path = p.join(mdConversionsDir.path, 'website-data-82361054', 'menu-0.json');
 
     final json = List<Map<dynamic, dynamic>>.from(
       jsonDecode(await File(path).readAsString()) as Iterable,

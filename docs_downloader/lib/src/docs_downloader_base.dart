@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:common_extensions_utils/utils.dart';
+import 'package:common_extensions_utils/directory_extension.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json_typescript_impl.dart';
 import 'package:docs_downloader/src/utils/path.dart';
@@ -13,17 +13,21 @@ import 'package:path/path.dart' as p;
 class DocsDownloader {
   ///
   DocsDownloader({
-    required this.htmlDownloadsDir,
+    required this.intactHtmlDownloadsDir,
+    required this.cleanHtmlDownloadsDir,
   });
 
   ///
-  final Directory htmlDownloadsDir;
+  final Directory intactHtmlDownloadsDir;
+
+  ///
+  final Directory cleanHtmlDownloadsDir;
 
   final _allMenuPaths = <String>{};
 
   /// Delete previous downloaded content for this website.
-  Future<void> deletePreviousHtmlDownloadsDirectory() async {
-    if (htmlDownloadsDir.existsSync()) await htmlDownloadsDir.delete(recursive: true);
+  Future<void> deletePreviousCleanHtmlDownloadsDirectory() async {
+    if (cleanHtmlDownloadsDir.existsSync()) await cleanHtmlDownloadsDir.delete(recursive: true);
   }
 
   /// Returns a list of page paths to download.
@@ -33,9 +37,6 @@ class DocsDownloader {
 
     /// CSS query selector to search the HTML element that contains the menu.
     required String containerQuerySelector,
-
-    /// Local directory where the pages will be downloaded.
-    required Directory htmlDownloadsDir,
 
     /// Clean website URL. Ex.: https://example.com
     required String websiteUrl,
@@ -85,7 +86,6 @@ class DocsDownloader {
       await _saveJsonMenu(
         menuPagePath: menuPagePath,
         menuData: menuDataCopy,
-        htmlDownloadsDir: htmlDownloadsDir,
         websiteUrl: websiteUrl,
         menuIdx: menuIndex,
       );
@@ -119,7 +119,6 @@ class DocsDownloader {
   Future<void> _saveJsonMenu({
     required String menuPagePath,
     required List<Map<dynamic, dynamic>> menuData,
-    required Directory htmlDownloadsDir,
     required String websiteUrl,
     required int menuIdx,
   }) async {
@@ -151,7 +150,7 @@ class DocsDownloader {
 
     const encoder = JsonEncoder.withIndent('  ');
 
-    final path = p.join(htmlDownloadsDir.path, 'menu-$menuIdx.json');
+    final path = p.join(intactHtmlDownloadsDir.path, 'website-data-82361054', 'menu-$menuIdx.json');
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsString(encoder.convert(menuData));
@@ -166,28 +165,21 @@ class DocsDownloader {
     // Remove trailing slash if it exists
     if (websiteUrl.endsWith('/')) websiteUrl = websiteUrl.substring(0, websiteUrl.length - 1);
 
+    final htmlFilePath = _getCleanWebsiteRootRelativePath(
+      pathToConvert: pageFullPath,
+      websiteUrl: websiteUrl,
+      parentPagePath: '', // Irrelevant in this case.
+      removeQueryPart: true,
+      removeFragmentPart: true,
+      addDotHtmlIfNotContains: true,
+    );
+
+    final htmlFile = File(p.join(intactHtmlDownloadsDir.path, htmlFilePath.substring(1)));
+
+    if (htmlFile.existsSync()) return;
+
     final html = await _downloadHtml(Uri.parse(pageFullPath));
     final document = parse(html);
-
-    // Clean anchors href attribute. Always website root relative paths starting with '/'.
-    for (final anchor in document.body!.querySelectorAll('$contentContainerQuerySelector a')) {
-      if (!anchor.attributes.containsKey('href')) continue;
-
-      final href = anchor.attributes['href']!;
-      if (!href.startsWith(websiteUrl) && href.contains('http') && !href.contains(websiteUrl)) {
-        // Externar URL in href.
-        anchor.attributes['href'] = getPathWithoutArchiveOrg(anchor.attributes['href']!);
-      } else {
-        // Internal URL in href.
-        anchor.attributes['href'] = _getCleanWebsiteRootRelativePath(
-          pathToConvert: anchor.attributes['href']!,
-          websiteUrl: websiteUrl,
-          parentPagePath: pageFullPath,
-          removeQueryPart: true,
-          addDotHtmlIfNotContains: true,
-        );
-      }
-    }
 
     // Download images.
     for (final img in document.body!.querySelectorAll('$contentContainerQuerySelector img')) {
@@ -197,22 +189,16 @@ class DocsDownloader {
         _completeRemoteSourcePath(img.attributes['src']!, websiteUrl),
       );
 
-      var imgPath = _getCleanWebsiteRootRelativePath(
-        pathToConvert: img.attributes['src']!,
-        websiteUrl: websiteUrl,
-        parentPagePath: pageFullPath,
-        removeQueryPart: true,
-        removeFragmentPart: true,
+      final imgPath = _getCleanImgPath(img.attributes['src']!, websiteUrl, pageFullPath);
+
+      final file = File(
+        p.join(
+          intactHtmlDownloadsDir.path,
+          'website-data-82361054',
+          'assets',
+          imgPath.substring(1),
+        ),
       );
-
-      // Check for external paths.
-      // If imgPath still contains '/http' then this is an external image path.
-      // Ex.: /docs/handbook/release-notes/https:/raw.githubusercontent.com/wiki/Mi..../image.png
-      if (imgPath.contains('/http')) {
-        imgPath = '/external/${imgPath.substring(imgPath.indexOf(':/') + 2)}';
-      }
-
-      final file = File(p.join(htmlDownloadsDir.path, 'assets', imgPath.substring(1)));
 
       if (!file.existsSync()) {
         late http.Response response;
@@ -236,15 +222,111 @@ class DocsDownloader {
           attemptCount++;
         }
       }
+    }
+
+    await htmlFile.parent.create(recursive: true);
+    await htmlFile.writeAsString(html);
+  }
+
+  ///
+  Future<void> cleanAllPages({
+    required List<String> menuPagePaths,
+    required String websiteUrl,
+    required String contentContainerQuerySelector,
+  }) async {
+    // Clean pages (link paths, image paths, ...).
+    for (final menuPagePath in menuPagePaths) {
+      await _cleanFullPage(
+        pageFullPath: menuPagePath,
+        websiteUrl: websiteUrl,
+        contentContainerQuerySelector: contentContainerQuerySelector,
+      );
+    }
+
+    // Copy website data (assets and JSON files).
+    final websiteDataDir = Directory(p.join(intactHtmlDownloadsDir.path, 'website-data-82361054'));
+    if (websiteDataDir.existsSync()) {
+      await websiteDataDir.copyContent(
+        Directory(p.join(cleanHtmlDownloadsDir.path, 'website-data-82361054')),
+      );
+    }
+  }
+
+  ///
+  Future<void> _cleanFullPage({
+    required String pageFullPath,
+    required String websiteUrl,
+    required String contentContainerQuerySelector,
+  }) async {
+    // Remove trailing slash if it exists
+    if (websiteUrl.endsWith('/')) websiteUrl = websiteUrl.substring(0, websiteUrl.length - 1);
+
+    final htmlFilePath = _getCleanWebsiteRootRelativePath(
+      pathToConvert: pageFullPath,
+      websiteUrl: websiteUrl,
+      parentPagePath: '', // Irrelevant in this case.
+      removeQueryPart: true,
+      removeFragmentPart: true,
+      addDotHtmlIfNotContains: true,
+    );
+
+    final intactHtmlFile = File(p.join(intactHtmlDownloadsDir.path, htmlFilePath.substring(1)));
+    final html = await intactHtmlFile.readAsString();
+    final document = parse(html);
+
+    // Clean anchors href attribute. Always website root relative paths starting with '/'.
+    for (final anchor in document.body!.querySelectorAll('$contentContainerQuerySelector a')) {
+      if (!anchor.attributes.containsKey('href')) continue;
+
+      final href = anchor.attributes['href']!;
+      if (!href.startsWith(websiteUrl) && href.contains('http') && !href.contains(websiteUrl)) {
+        // Externar URL in href.
+        anchor.attributes['href'] = getPathWithoutArchiveOrg(anchor.attributes['href']!);
+      } else {
+        // Internal URL in href.
+        anchor.attributes['href'] = _getCleanWebsiteRootRelativePath(
+          pathToConvert: anchor.attributes['href']!,
+          websiteUrl: websiteUrl,
+          parentPagePath: pageFullPath,
+          removeQueryPart: true,
+          addDotHtmlIfNotContains: true,
+        );
+      }
+    }
+
+    // Clean images.
+    for (final img in document.body!.querySelectorAll('$contentContainerQuerySelector img')) {
+      if (img.attributes['src'] == null) continue;
+
+      final imgPath = _getCleanImgPath(img.attributes['src']!, websiteUrl, pageFullPath);
 
       //
       img.attributes['src'] = '/assets$imgPath';
     }
 
-    await _saveHtml(
-      document.outerHtml,
-      leftCleanSourcePath(getPathWithoutArchiveOrg(pageFullPath), websiteUrl),
+    // Save HTML file.
+    final cleanHtmlFile = File(p.join(cleanHtmlDownloadsDir.path, htmlFilePath.substring(1)));
+    await cleanHtmlFile.parent.create(recursive: true);
+    await cleanHtmlFile.writeAsString(document.outerHtml);
+  }
+
+  String _getCleanImgPath(String imgSrc, String websiteUrl, String pageFullPath) {
+    var imgPath = _getCleanWebsiteRootRelativePath(
+      pathToConvert: imgSrc,
+      websiteUrl: websiteUrl,
+      parentPagePath: pageFullPath,
+      removeQueryPart: true,
+      removeFragmentPart: true,
     );
+
+    // Check for external paths.
+    // If imgPath still contains '/http' then this is an external image path.
+    // Ex.: /docs/handbook/release-notes/https:/raw.githubusercontent.com/wiki/Mi..../image.png
+    if (imgPath.contains('/http')) {
+      imgPath = '/external/${imgPath.substring(imgPath.indexOf(':/') + 2)}';
+    }
+
+    return imgPath;
   }
 
   Future<String> _downloadHtml(Uri uri) async {
@@ -268,23 +350,6 @@ class DocsDownloader {
     }
 
     return '';
-  }
-
-  Future<void> _saveHtml(String htmlContent, String pagePath) async {
-    var path = pagePath;
-
-    if (path.startsWith('/')) path = path.substring(1);
-    if (path.contains('#')) path = path.split('#').first;
-    if (path.contains('?')) path = path.split('?').first;
-    if (path.endsWith('.htm')) path = path.substring(0, path.length - 4);
-    if (path.endsWith('.php')) path = path.substring(0, path.length - 4);
-    if (path.endsWith('.asp')) path = path.substring(0, path.length - 4);
-
-    if (!path.endsWith('.html')) path += '.html';
-
-    final file = File(p.join(htmlDownloadsDir.path, path));
-    await file.parent.create(recursive: true);
-    await file.writeAsString(htmlContent);
   }
 
   String _completeRemoteSourcePath(String remotePath, String websiteUrl) {
@@ -343,7 +408,7 @@ class DocsDownloader {
       path = path.substring(0, charIdx);
     }
 
-    //
+    // Convert local relative path to root relative path. Ex.: 'something' to '/foo/bar/something'.
     if (!path.startsWith('/')) {
       // Recursively get a clean parent page path.
       parentPagePath = _getCleanWebsiteRootRelativePath(
@@ -363,12 +428,14 @@ class DocsDownloader {
     }
 
     if (addDotHtmlIfNotContains && !path.endsWith('.html')) {
-      // Check to avoid cases like /tsconfig/.html or /play/.html, and only
-      // applies to the paths found in the menu.
+      // Check to avoid cases like /tsconfig/.html or /play/.html.
       var auxPath = path;
       if (auxPath.endsWith('/')) auxPath = auxPath.substring(0, auxPath.length - 1);
-      if (!auxPath.endsWith('.html')) auxPath = '$auxPath.html';
+      final extension = p.extension(auxPath);
+      if (extension.isNotEmpty) auxPath = auxPath.substring(0, auxPath.length - extension.length);
+      auxPath = '$auxPath.html';
 
+      // And only applies to the paths found in the menu.
       if (_allMenuPaths.contains(auxPath)) {
         path = auxPath;
       }
