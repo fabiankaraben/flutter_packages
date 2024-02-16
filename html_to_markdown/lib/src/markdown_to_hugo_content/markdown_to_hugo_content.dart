@@ -94,7 +94,7 @@ class MarkdownToHugoContent {
     if (existsHugoStaticDir) {
       if (rootItemDirectory.existsSync()) await rootItemDirectory.delete(recursive: true);
     } else {
-      await hugoContentBaseDir.delete(recursive: true);
+      if (hugoContentBaseDir.existsSync()) await hugoContentBaseDir.delete(recursive: true);
     }
 
     // Recursively create menu directories, subdirectories and its _index.md files.
@@ -377,10 +377,17 @@ class MarkdownToHugoContent {
         }
       }
 
-      if (isImage || path.startsWith('http')) {
+      if (isImage) {
         mdSB.writeAll([
-          // Image or external path (keep with no modifications).
+          // Image (keep with no modifications).
           md.substring(preTextStart, pathStart),
+          path,
+        ]);
+      } else if (path.startsWith('http')) {
+        mdSB.writeAll([
+          // External path (keep with no modifications).
+          md.substring(preTextStart, pathStart - 2),
+          ' ↗](',
           path,
         ]);
       } else {
