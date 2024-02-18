@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:common_extensions_utils/utils.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/data_providers/menu_item_and_pages_data_provider.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/models/menu_item.dart';
@@ -73,25 +74,28 @@ class MenuItemAndPagesDataProviderLocalFSImpl implements MenuItemAndPagesDataPro
         weight++;
 
         if (item['items'] == null) {
-          generalPageId++;
-
           final pagePath = item['path'] as String;
-          final pageData = pagesData.firstWhere((e) => e['path'] == pagePath, orElse: () => {});
-          final pageTitle = pageData['title'] ?? '';
-          final pageDescription = pageData['description'] ?? '';
+          final pageData = pagesData.firstWhereOrNull((e) => e['path'] == pagePath);
 
-          pages.add(
-            Page(
-              id: generalPageId,
-              title: pageTitle as String,
-              weight: weight,
-              path: pagePath,
-              menuItemId: parentMenuItemId,
-              slug: p.basenameWithoutExtension(pagePath),
-              linkTitle: item['title'] as String,
-              description: pageDescription as String,
-            ),
-          );
+          if (pageData != null) {
+            generalPageId++;
+
+            final pageTitle = pageData['title'];
+            final pageDescription = pageData['description'];
+
+            pages.add(
+              Page(
+                id: generalPageId,
+                title: pageTitle as String,
+                weight: weight,
+                path: pagePath,
+                menuItemId: parentMenuItemId,
+                slug: p.basenameWithoutExtension(pagePath),
+                linkTitle: item['title'] as String,
+                description: pageDescription as String,
+              ),
+            );
+          }
         } else {
           generalMenuItemId++;
 

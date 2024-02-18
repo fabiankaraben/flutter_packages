@@ -392,12 +392,13 @@ class MarkdownToHugoContent {
         ]);
       } else {
         final cleanPath = rightCleanSourcePath(path);
+        final pathFragment = path.contains('#') ? path.substring(path.indexOf('#')) : '';
         mdSB.writeAll(
-          _pages.any((e) => e.path == path)
+          _pages.any((e) => e.path == cleanPath)
               ? [
                   // Internal path.
                   md.substring(preTextStart, pathStart),
-                  _getFullSlugPagePath(cleanPath),
+                  '${_getFullSlugPagePath(cleanPath)}$pathFragment',
                 ]
               : [
                   // Internal path not included in the menu.
