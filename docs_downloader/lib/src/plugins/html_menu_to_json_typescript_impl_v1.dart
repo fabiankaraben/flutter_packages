@@ -3,7 +3,7 @@ import 'package:docs_downloader/src/plugins/html_menu_to_json.dart';
 import 'package:html/dom.dart';
 
 ///
-class HtmlMenuToJsonTypeScriptImpl implements HtmlMenuToJsonPlugin {
+class HtmlMenuToJsonTypeScriptImplV1 implements HtmlMenuToJsonPlugin {
   ///
   @override
   String convertMenuToJson(Element element) {

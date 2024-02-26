@@ -40,7 +40,7 @@ class MarkdownToHugoContent {
   final Map<int, Directory> _menuItemDirectoriesById = {};
 
   ///
-  late List<String> _inOrderPathPaths;
+  late List<String> _inOrderPagePaths;
 
   ///
   late String _websiteUrl;
@@ -79,7 +79,7 @@ class MarkdownToHugoContent {
     // }
 
     // Get an in order list of paths of pages from the menu.json file.
-    _inOrderPathPaths = await _getInOrderPagePathsFromMenuJsonFile();
+    _inOrderPagePaths = await _getInOrderPagePathsFromMenuJsonFile();
 
     //
     // Create menu structure.
@@ -195,9 +195,12 @@ class MarkdownToHugoContent {
         .where((e) => e.menuItemId == page.menuItemId)
         .reduce((current, next) => current.weight < next.weight ? current : next);
     if (minWeightPage.id == page.id) {
-      final idxOfPath = _inOrderPathPaths.indexOf(page.path);
-      if (idxOfPath < 1 || idxOfPath == _inOrderPathPaths.length - 1) return null;
-      final prevPage = _pages.firstWhere((e) => e.path == _inOrderPathPaths[idxOfPath - 1]);
+      final idxOfPath = _inOrderPagePaths.indexOf(page.path);
+
+      if (idxOfPath < 1 || idxOfPath == _inOrderPagePaths.length - 1) return null;
+      if (!_pages.any((e) => e.path == _inOrderPagePaths[idxOfPath - 1])) return null;
+
+      final prevPage = _pages.firstWhere((e) => e.path == _inOrderPagePaths[idxOfPath - 1]);
       if (_menuItemDirectoriesById.containsKey(prevPage.menuItemId)) {
         return _getFullSlugPagePath(prevPage.path);
       }
@@ -210,9 +213,12 @@ class MarkdownToHugoContent {
         .where((e) => e.menuItemId == page.menuItemId)
         .reduce((current, next) => current.weight > next.weight ? current : next);
     if (maxWeightPage.id == page.id) {
-      final idxOfPath = _inOrderPathPaths.indexOf(page.path);
-      if (idxOfPath < 1 || idxOfPath == _inOrderPathPaths.length - 1) return null;
-      final nextPage = _pages.firstWhere((e) => e.path == _inOrderPathPaths[idxOfPath + 1]);
+      final idxOfPath = _inOrderPagePaths.indexOf(page.path);
+
+      if (idxOfPath < 1 || idxOfPath == _inOrderPagePaths.length - 1) return null;
+      if (!_pages.any((e) => e.path == _inOrderPagePaths[idxOfPath + 1])) return null;
+
+      final nextPage = _pages.firstWhere((e) => e.path == _inOrderPagePaths[idxOfPath + 1]);
       if (_menuItemDirectoriesById.containsKey(nextPage.menuItemId)) {
         return _getFullSlugPagePath(nextPage.path);
       }

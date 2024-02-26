@@ -46,6 +46,8 @@ class HtmlElementToMarkdown {
           md.write(_convertParagraphToMd(el, level));
         } else if (el.localName == 'div') {
           md.write(_convertDivToMd(el, level));
+        } else if (el.localName == 'header') {
+          md.write(_convertHeaderToMd(el, level));
         } else if (el.localName == 'blockquote') {
           md.write(_convertBlockquoteToMd(el, level));
         } else if (el.localName == 'hr') {
@@ -176,7 +178,7 @@ class HtmlElementToMarkdown {
     // Merge text and id.
     //
 
-    inner = '$text${id.isNotEmpty ? ' {#$id}' : ''}';
+    inner = '${text.trim()}${id.isNotEmpty ? ' {#$id}' : ''}';
 
     return '$pre$inner$post';
   }
@@ -194,6 +196,25 @@ class HtmlElementToMarkdown {
 
   // Block level element.
   String _convertDivToMd(Element element, int level) {
+    const pre = '';
+
+    if (element.attributes.containsKey('data-language')) {
+      _context['div_data-language'] = element.attributes['data-language'];
+    }
+
+    final inner = _removeAllLastLineBreaks(
+      _htmlToMarkdown(element, level + 1),
+    );
+
+    _context.remove('pre');
+
+    final post = level == 0 ? '\n\n' : '\n';
+
+    return '$pre$inner$post';
+  }
+
+  // Block level element.
+  String _convertHeaderToMd(Element element, int level) {
     const pre = '';
     final inner = _removeAllLastLineBreaks(
       _htmlToMarkdown(element, level + 1),
@@ -236,7 +257,12 @@ class HtmlElementToMarkdown {
     final insideCode = _context.containsKey('code');
     final startEndChars = insideCode ? '``' : '```';
 
-    final pre = '$startEndChars\n';
+    var lang = '';
+    if (_context.containsKey('div_data-language')) {
+      lang = _context['div_data-language'] as String;
+    }
+
+    final pre = '$startEndChars$lang\n';
     _context['pre'] = true;
     final inner = _removeAllLastLineBreaks(
       _htmlToMarkdown(element, level + 1),

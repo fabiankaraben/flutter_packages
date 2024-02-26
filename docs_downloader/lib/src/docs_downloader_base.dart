@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:common_extensions_utils/directory_extension.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json.dart';
-import 'package:docs_downloader/src/plugins/html_menu_to_json_typescript_impl.dart';
+import 'package:docs_downloader/src/plugins/html_menu_to_json_react_impl_v1.dart';
+import 'package:docs_downloader/src/plugins/html_menu_to_json_typescript_impl_v1.dart';
 import 'package:docs_downloader/src/utils/path.dart';
 import 'package:html/parser.dart';
 import 'package:http/http.dart' as http;
@@ -43,6 +44,9 @@ class DocsDownloader {
 
     /// An index for this menu, usually 0. Useful for websites with multiple docs.
     required int menuIndex,
+
+    ///
+    int menuPluginVersion = 1,
   }) async {
     // Remove trailing slash if it exists
     if (websiteUrl.endsWith('/')) websiteUrl = websiteUrl.substring(0, websiteUrl.length - 1);
@@ -67,7 +71,9 @@ class DocsDownloader {
       HtmlMenuToJsonPlugin? menuConverter;
 
       if (menuPagePath.contains('typescriptlang.org')) {
-        menuConverter = HtmlMenuToJsonTypeScriptImpl();
+        menuConverter = HtmlMenuToJsonTypeScriptImplV1();
+      } else if (menuPagePath.contains('reactjs.org')) {
+        menuConverter = HtmlMenuToJsonReactImplV1();
       }
 
       if (menuConverter != null) {
