@@ -3,6 +3,9 @@ import 'dart:io';
 
 import 'package:common_extensions_utils/directory_extension.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json.dart';
+import 'package:docs_downloader/src/plugins/html_menu_to_json_dart_impl_v1.dart';
+import 'package:docs_downloader/src/plugins/html_menu_to_json_flutter_impl_v1.dart';
+import 'package:docs_downloader/src/plugins/html_menu_to_json_nextjs_impl_v1.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json_react_impl_v1.dart';
 import 'package:docs_downloader/src/plugins/html_menu_to_json_typescript_impl_v1.dart';
 import 'package:docs_downloader/src/utils/path.dart';
@@ -25,6 +28,8 @@ class DocsDownloader {
   final Directory cleanHtmlDownloadsDir;
 
   final _allMenuPaths = <String>{};
+
+  final _allImagePaths = <String>{};
 
   /// Delete previous downloaded content for this website.
   Future<void> deletePreviousCleanHtmlDownloadsDirectory() async {
@@ -74,6 +79,12 @@ class DocsDownloader {
         menuConverter = HtmlMenuToJsonTypeScriptImplV1();
       } else if (menuPagePath.contains('reactjs.org')) {
         menuConverter = HtmlMenuToJsonReactImplV1();
+      } else if (menuPagePath.contains('nextjs.org')) {
+        menuConverter = HtmlMenuToJsonNextjsImplV1();
+      } else if (menuPagePath.contains('dart.dev')) {
+        menuConverter = HtmlMenuToJsonDartImplV1();
+      } else if (menuPagePath.contains('flutter.dev')) {
+        menuConverter = HtmlMenuToJsonFlutterImplV1();
       }
 
       if (menuConverter != null) {
@@ -105,7 +116,16 @@ class DocsDownloader {
 
     void inOrder(List<Map<dynamic, dynamic>> items) {
       for (final item in items) {
-        if (item['path'] != null && (item['path'] as String).trim().isNotEmpty) {
+        var path = (item['path'] != null && (item['path'] as String).trim().isNotEmpty)
+            ? (item['path'] as String).trim()
+            : '';
+        if (path.contains('#')) path = path.substring(0, path.indexOf('#'));
+        if (path.contains('?')) path = path.substring(0, path.indexOf('?'));
+
+        final isExternalUrl = (path.startsWith('https://') || path.startsWith('http://')) &&
+            !path.startsWith(websiteUrl);
+
+        if (path.isNotEmpty && !isExternalUrl) {
           pathsToDownload.add(
             _completeRemoteSourcePath(item['path'] as String, websiteUrl),
           );
@@ -191,9 +211,11 @@ class DocsDownloader {
     for (final img in document.body!.querySelectorAll('$contentContainerQuerySelector img')) {
       if (img.attributes['src'] == null) continue;
 
-      final remoteSourceUri = Uri.parse(
-        _completeRemoteSourcePath(img.attributes['src']!, websiteUrl),
-      );
+      final remoteSrc = _completeRemoteSourcePath(img.attributes['src']!, websiteUrl);
+
+      _allImagePaths.add(remoteSrc);
+
+      final remoteSourceUri = Uri.parse(remoteSrc);
 
       final imgPath = _getCleanImgPath(img.attributes['src']!, websiteUrl, pageFullPath);
 
@@ -211,16 +233,29 @@ class DocsDownloader {
         var attemptCount = 0;
         while (attemptCount < 50) {
           try {
+            print('Image: $remoteSourceUri');
             response = await http.get(remoteSourceUri);
-            // print('${response.statusCode} $sourceUri');
+            print('Image response code: ${response.statusCode}');
 
             if (response.statusCode == 200) {
               await file.parent.create(recursive: true);
               await file.writeAsBytes(response.bodyBytes);
-              break;
+            } else {
+              // Try download image without archive.org URL part.
+              print('Image without archive.org');
+              response = await http.get(
+                Uri.parse(
+                  getPathWithoutArchiveOrg(remoteSourceUri.toString()),
+                ),
+              );
+              if (response.statusCode == 200) {
+                await file.parent.create(recursive: true);
+                await file.writeAsBytes(response.bodyBytes);
+              }
             }
+            break;
           } on http.ClientException {
-            // print('ClientException: $sourceUri');
+            print('Image ClientException');
             await Future<void>.delayed(const Duration(minutes: 1));
           } catch (e) {
             rethrow;
@@ -256,6 +291,12 @@ class DocsDownloader {
         Directory(p.join(cleanHtmlDownloadsDir.path, 'website-data-82361054')),
       );
     }
+
+    // Save images.txt file.
+    final imagesFile = File(
+      p.join(intactHtmlDownloadsDir.path, 'website-data-82361054', 'images.txt'),
+    );
+    await imagesFile.writeAsString(_allImagePaths.join('\n'));
   }
 
   ///
@@ -317,19 +358,30 @@ class DocsDownloader {
   }
 
   String _getCleanImgPath(String imgSrc, String websiteUrl, String pageFullPath) {
-    var imgPath = _getCleanWebsiteRootRelativePath(
-      pathToConvert: imgSrc,
-      websiteUrl: websiteUrl,
-      parentPagePath: pageFullPath,
-      removeQueryPart: true,
-      removeFragmentPart: true,
-    );
+    late String imgPath;
 
-    // Check for external paths.
-    // If imgPath still contains '/http' then this is an external image path.
-    // Ex.: /docs/handbook/release-notes/https:/raw.githubusercontent.com/wiki/Mi..../image.png
-    if (imgPath.contains('/http')) {
-      imgPath = '/external/${imgPath.substring(imgPath.indexOf(':/') + 2)}';
+    // For Next.js images.
+    if (imgSrc.contains('/_next/image?')) {
+      final url = Uri.parse(
+        imgSrc.substring(imgSrc.indexOf('/_next/image?')),
+      ).queryParameters['url'];
+      print('URL: $url');
+      imgPath = url ?? imgSrc;
+    } else {
+      imgPath = _getCleanWebsiteRootRelativePath(
+        pathToConvert: imgSrc,
+        websiteUrl: websiteUrl,
+        parentPagePath: pageFullPath,
+        removeQueryPart: true,
+        removeFragmentPart: true,
+      );
+
+      // Check for external paths.
+      // If imgPath still contains '/http' then this is an external image path.
+      // Ex.: /docs/handbook/release-notes/https:/raw.githubusercontent.com/wiki/Mi..../image.png
+      if (imgPath.contains('/http')) {
+        imgPath = '/external/${imgPath.substring(imgPath.indexOf(':/') + 2)}';
+      }
     }
 
     return imgPath;

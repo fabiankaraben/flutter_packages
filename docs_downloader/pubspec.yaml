@@ -9,6 +9,7 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
+  collection: ^1.18.0
   common_extensions_utils:
     path: ../common_extensions_utils
   html: ^0.15.4
