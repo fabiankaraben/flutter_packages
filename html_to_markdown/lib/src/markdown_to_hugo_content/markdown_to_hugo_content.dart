@@ -70,10 +70,12 @@ class MarkdownToHugoContent {
     _menuItems = ms;
     _pages = ps;
 
+    // print('---------- Menu items:');
     // for (final menuItem in _menuItems) {
     //   print(menuItem);
     // }
 
+    // print('---------- Pages:');
     // for (final page in _pages) {
     //   print(page);
     // }
@@ -186,6 +188,9 @@ class MarkdownToHugoContent {
 
     // Adapt all links.
     md = await _adaptAllLinkPaths(md);
+
+    // HTML elements to Hugo shortcuts.
+    md = await _convertAllHtmlToHugoShortcuts(md);
 
     await _saveMarkdown(page, md, finalFileDirectory);
   }
@@ -420,6 +425,71 @@ class MarkdownToHugoContent {
     mdSB.write(md.substring(preTextStart, md.length));
 
     return mdSB.toString();
+  }
+
+  String _convertAllHtmlToHugoShortcuts(String md) {
+    //
+    // Specific functions.
+    //
+
+    List<String> htmlDetailsToHugoShortcut(List<String> htmlLines) {
+      var summaryLine = '';
+      final contentLines = <String>[];
+      for (final line in htmlLines) {
+        if (line.trim().startsWith('<details') || line.trim().startsWith('</details')) continue;
+        if (line.trim().startsWith('<summary')) {
+          summaryLine = line.trim();
+        } else {
+          contentLines.add(line);
+        }
+      }
+
+      final title = summaryLine.isNotEmpty ? summaryLine.substring(9, summaryLine.length - 10) : '';
+
+      return [
+        '{{% details title="$title" closed="true" %}}',
+        ...contentLines,
+        '{{% /details %}}',
+      ];
+    }
+
+    //
+    // Process all md content.
+    //
+
+    final outputLines = <String>[];
+
+    const htmlTags = {'details'};
+
+    var isTagOpen = false;
+    var openTagName = '';
+    final htmlLines = <String>[];
+    final mdLines = md.split('\n');
+    for (final line in mdLines) {
+      if (!isTagOpen && htmlTags.any((e) => line.startsWith('<$e'))) {
+        isTagOpen = true;
+        openTagName = htmlTags.firstWhere((e) => line.startsWith('<$e'));
+      }
+
+      if (isTagOpen) {
+        htmlLines.add(line);
+      } else {
+        outputLines.add(line);
+      }
+
+      if (isTagOpen && htmlTags.any((e) => line.startsWith('</$e'))) {
+        isTagOpen = false;
+        if (openTagName == 'details') {
+          outputLines.addAll(htmlDetailsToHugoShortcut(htmlLines));
+        } else {
+          outputLines.addAll(htmlLines);
+        }
+        openTagName = '';
+        htmlLines.clear();
+      }
+    }
+
+    return outputLines.join('\n');
   }
 
   // [path] must be a root relative path without query and without fragment.

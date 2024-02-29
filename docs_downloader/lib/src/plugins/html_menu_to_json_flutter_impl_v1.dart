@@ -51,9 +51,8 @@ class HtmlMenuToJsonFlutterImplV1 implements HtmlMenuToJsonPlugin {
       return '';
     } else {
       final title = anchorEl.text.trim();
-      final path = anchorEl.attributes['href'] ?? '';
-
       final ulEl = element.children.firstWhereOrNull((e) => e.localName == 'ul');
+      final path = ulEl == null ? anchorEl.attributes['href'] ?? '' : '';
       final items = ulEl != null ? '[${_convertToJson(ulEl)}]'.replaceFirst('},]', '}]') : '';
 
       inner = '"title":"$title", "path":"$path"${ulEl != null ? ', "items":$items' : ''}';

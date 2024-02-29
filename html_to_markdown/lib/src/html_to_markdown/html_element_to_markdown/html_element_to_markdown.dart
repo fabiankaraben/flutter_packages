@@ -1,5 +1,6 @@
 import 'package:common_extensions_utils/html_extension.dart';
 import 'package:html/dom.dart';
+import 'package:html_to_markdown/src/html_to_markdown/html_element_to_markdown/plugins/dart.dart';
 import 'package:html_to_markdown/src/html_to_markdown/html_element_to_markdown/plugins/typescript.dart';
 
 ///
@@ -9,6 +10,15 @@ enum HtmlElementToMarkdownPlugin {
 
   ///
   typescript,
+
+  ///
+  dart,
+
+  ///
+  flutter,
+
+  ///
+  nextjs,
 }
 
 /// HTML to Markdown converter.
@@ -24,7 +34,13 @@ class HtmlElementToMarkdown {
     required HtmlElementToMarkdownPlugin plugin,
   }) {
     _plugin = plugin;
-    return _htmlToMarkdown(element, 0);
+    var md = _htmlToMarkdown(element, 0);
+
+    if (_plugin == HtmlElementToMarkdownPlugin.dart) {
+      md = HtmlToMdDart().endingReplacements(md);
+    }
+
+    return md;
   }
 
   String _htmlToMarkdown(Element element, int level) {
@@ -78,6 +94,10 @@ class HtmlElementToMarkdown {
           md.write(_convertThToMd(el, level));
         } else if (el.localName == 'td') {
           md.write(_convertTdToMd(el, level));
+        } else if (el.localName == 'iframe') {
+          md.write(_convertIframeToMd(el, level));
+        } else if (el.localName == 'details') {
+          md.write(_convertDetailsToMd(el, level));
         }
 
         //
@@ -442,10 +462,40 @@ class HtmlElementToMarkdown {
     return '$pre$inner$post';
   }
 
+  // Block level element.
+  String _convertIframeToMd(Element element, int level) {
+    const pre = '';
+
+    final inner = element.outerHtml;
+
+    final post = level == 0 ? '\n\n' : '\n';
+
+    return '$pre$inner$post';
+  }
+
+  // Block level element.
+  String _convertDetailsToMd(Element element, int level) {
+    const pre = '';
+
+    final summaryEl = element.querySelector('summary')?.remove() as Element?;
+    // final inner = element.outerHtml;
+
+    final inner = '<details>\n${summaryEl?.outerHtml ?? ''}\n${_removeAllLastLineBreaks(
+      _htmlToMarkdown(element, level + 1),
+    )}\n</details>';
+
+    final post = level == 0 ? '\n\n' : '\n';
+
+    return '$pre$inner$post';
+  }
+
   // Inline level element.
   String _convertAnchorToMd(Element element, int level) {
     const pre = '[';
+
     final inner = _htmlToMarkdown(element, level + 1);
+    if (inner.trim() == '#') return '';
+
     final post = '](${element.attributes['href'] ?? '#'})${level == 0 ? '\n\n' : ''}';
 
     return '$pre$inner$post';
@@ -489,8 +539,12 @@ class HtmlElementToMarkdown {
 
   // Inline level element.
   String _convertCodeToMd(Element element, int level) {
+    // Case for dart.dev where there are iframe but without iframe for static html content.
+    final lang = element.className.startsWith('language-dart') ? 'dart' : '';
+
     final insidePre = _context.containsKey('pre');
-    final pre = insidePre ? '' : '`';
+    final pre = insidePre ? lang : '`';
+
     _context['code'] = true;
     final inner = _htmlToMarkdown(element, level + 1);
     _context.remove('code');

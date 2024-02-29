@@ -72,16 +72,28 @@ class HtmlToMarkdown {
 
     if (element == null) return;
 
-    // var md = _htmlToMarkdown(element, 0);
+    late HtmlElementToMarkdownPlugin plugin;
+    if (_websiteUrl.contains('typescript')) {
+      plugin = HtmlElementToMarkdownPlugin.typescript;
+    } else if (_websiteUrl.contains('dart.dev')) {
+      plugin = HtmlElementToMarkdownPlugin.dart;
+    } else {
+      plugin = HtmlElementToMarkdownPlugin.none;
+    }
+
     var md = HtmlElementToMarkdown().convert(
       element: element,
-      plugin: _websiteUrl.contains('typescript')
-          ? HtmlElementToMarkdownPlugin.typescript
-          : HtmlElementToMarkdownPlugin.none,
+      plugin: plugin,
     );
 
     // Remove the last double line break.
     md = md.substring(0, md.length - 1);
+
+    // Remove all before the first heading.
+    md = md.substring(md.indexOf('#'));
+
+    // Fix special cases of headings joined to previous content.
+    md = md.replaceAll('\n#', '\n\n#').replaceAll('\n\n\n#', '\n\n#');
 
     if (_specialH1QuerySelector != null) {
       final h1Element = document.body!.querySelector(_specialH1QuerySelector!)!;

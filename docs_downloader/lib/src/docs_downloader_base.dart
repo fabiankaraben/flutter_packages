@@ -233,16 +233,16 @@ class DocsDownloader {
         var attemptCount = 0;
         while (attemptCount < 50) {
           try {
-            print('Image: $remoteSourceUri');
+            // print('Image: $remoteSourceUri');
             response = await http.get(remoteSourceUri);
-            print('Image response code: ${response.statusCode}');
+            // print('Image response code: ${response.statusCode}');
 
             if (response.statusCode == 200) {
               await file.parent.create(recursive: true);
               await file.writeAsBytes(response.bodyBytes);
             } else {
               // Try download image without archive.org URL part.
-              print('Image without archive.org');
+              // print('Image without archive.org');
               response = await http.get(
                 Uri.parse(
                   getPathWithoutArchiveOrg(remoteSourceUri.toString()),
@@ -255,7 +255,7 @@ class DocsDownloader {
             }
             break;
           } on http.ClientException {
-            print('Image ClientException');
+            // print('Image ClientException');
             await Future<void>.delayed(const Duration(minutes: 1));
           } catch (e) {
             rethrow;
@@ -365,7 +365,7 @@ class DocsDownloader {
       final url = Uri.parse(
         imgSrc.substring(imgSrc.indexOf('/_next/image?')),
       ).queryParameters['url'];
-      print('URL: $url');
+      // print('URL: $url');
       imgPath = url ?? imgSrc;
     } else {
       imgPath = _getCleanWebsiteRootRelativePath(
