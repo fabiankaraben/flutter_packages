@@ -88,7 +88,7 @@ class DocsDownloader {
       }
 
       if (menuConverter != null) {
-        final stringJsonMenu = menuConverter.convertMenuToJson(menuEl);
+        final stringJsonMenu = menuConverter.convertMenuToJson(menuEl).replaceAll('\n', '');
         menuData = List<Map<dynamic, dynamic>>.from(
           jsonDecode(stringJsonMenu) as Iterable,
         );

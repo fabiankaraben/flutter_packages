@@ -90,10 +90,10 @@ class HtmlToMarkdown {
     md = md.substring(0, md.length - 1);
 
     // Remove all before the first heading.
-    md = md.substring(md.indexOf('#'));
+    if (md.contains('#')) md = md.substring(md.indexOf('#'));
 
-    // Fix special cases of headings joined to previous content.
-    md = md.replaceAll('\n#', '\n\n#').replaceAll('\n\n\n#', '\n\n#');
+    // Fix special cases of joined blocks.
+    md = _fixSpecialCasesOfJoinedBlocks(md);
 
     if (_specialH1QuerySelector != null) {
       final h1Element = document.body!.querySelector(_specialH1QuerySelector!)!;
@@ -111,6 +111,41 @@ class HtmlToMarkdown {
     _registerProcessedPageData(document, file.path);
 
     await _saveMarkdown(md, file.path);
+  }
+
+  // Fix special cases of joined blocks.
+  String _fixSpecialCasesOfJoinedBlocks(String md) {
+    final outputLines = <String>[];
+    final mdLines = md.split('\n');
+
+    var isCodeBlockOpen = false;
+
+    for (var i = 0; i < mdLines.length; i++) {
+      final line = mdLines[i];
+      final tLine = line.trim();
+
+      final tPrevLine = i - 1 >= 0 ? mdLines[i - 1].trim() : null;
+      final tNextLine = i + 1 < mdLines.length ? mdLines[i + 1].trim() : null;
+
+      if (tLine.startsWith('#')) {
+        if (tPrevLine != null && tPrevLine.isNotEmpty) outputLines.add('');
+        outputLines.add(line);
+        if (tNextLine != null && tNextLine.isNotEmpty) outputLines.add('');
+      } else if (tLine.startsWith('```')) {
+        outputLines.add(line);
+        if (isCodeBlockOpen &&
+            tNextLine != null &&
+            tNextLine.isNotEmpty &&
+            tNextLine != '</details>') {
+          outputLines.add('');
+        }
+        isCodeBlockOpen = !isCodeBlockOpen;
+      } else {
+        outputLines.add(line);
+      }
+    }
+
+    return outputLines.join('\n');
   }
 
   // Register processed data.

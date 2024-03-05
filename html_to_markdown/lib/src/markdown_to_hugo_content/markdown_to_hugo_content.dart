@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:common_extensions_utils/directory_extension.dart';
 import 'package:common_extensions_utils/utils.dart';
 import 'package:html_to_markdown/src/markdown_to_hugo_content/data/models/menu_item.dart';
@@ -49,6 +50,8 @@ class MarkdownToHugoContent {
   Future<void> convertFullWebsite({
     required String websiteTitle,
     required String websiteUrl,
+    String? websiteLatestVersion,
+    String? websiteLatestVersionUrl,
   }) async {
     _websiteUrl = websiteUrl;
 
@@ -99,6 +102,27 @@ class MarkdownToHugoContent {
       if (hugoContentBaseDir.existsSync()) await hugoContentBaseDir.delete(recursive: true);
     }
 
+    // Add the top menu item 'Latest version'.
+    if (websiteLatestVersion != null && websiteLatestVersionUrl != null) {
+      final file = File(
+        p.join(hugoContentBaseDir.path, websiteBuildDirectoryName, 'latest', '_index.md'),
+      );
+      if (file.existsSync()) await file.delete();
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        [
+          '---',
+          'title: Latest version ($websiteLatestVersion) ↗',
+          'weight: 1',
+          'type: docs',
+          'launchUrl: $websiteLatestVersionUrl',
+          'noindex: true',
+          '---',
+          '',
+        ].join('\n'),
+      );
+    }
+
     // Recursively create menu directories, subdirectories and its _index.md files.
     await _addIndexFileToDirectory(
       hasVersion ? rootItemDirectory.parent : rootItemDirectory,
@@ -123,6 +147,18 @@ class MarkdownToHugoContent {
           _menuItemDirectoriesById[page.menuItemId]!,
         );
       }
+    }
+
+    //
+    // Post processing, analyzing all versions.
+    //
+
+    if (websiteLatestVersion != null && websiteLatestVersionUrl != null) {
+      // Sort version directories by weight front matter field.
+      await _sortVersionDirectories();
+
+      // Add canonical field to repeated pages between versions.
+      await _addCanonicalToRepeatedPages();
     }
 
     //
@@ -190,7 +226,7 @@ class MarkdownToHugoContent {
     md = await _adaptAllLinkPaths(md);
 
     // HTML elements to Hugo shortcuts.
-    md = await _convertAllHtmlToHugoShortcuts(md);
+    md = _convertAllHtmlToHugoShortcuts(md);
 
     await _saveMarkdown(page, md, finalFileDirectory);
   }
@@ -444,7 +480,9 @@ class MarkdownToHugoContent {
         }
       }
 
-      final title = summaryLine.isNotEmpty ? summaryLine.substring(9, summaryLine.length - 10) : '';
+      final title = summaryLine.isNotEmpty
+          ? summaryLine.substring(summaryLine.indexOf('>') + 1, summaryLine.indexOf('</'))
+          : '';
 
       return [
         '{{% details title="$title" closed="true" %}}',
@@ -502,5 +540,119 @@ class MarkdownToHugoContent {
       slugs.add(menuItem.slug);
     }
     return '/${slugs.reversed.join('/')}';
+  }
+
+  /// Sort version directories by weight front matter field.
+  Future<void> _sortVersionDirectories() async {
+    final dir = Directory(p.join(hugoContentBaseDir.path, websiteBuildDirectoryName));
+
+    // Get all version from directories names.
+    var versions = <String>[];
+    for (final versionDir in dir.listSync().whereType<Directory>()) {
+      final dirName = p.basename(versionDir.path);
+      if (double.tryParse(dirName) != null && !versions.contains(dirName)) versions.add(dirName);
+    }
+
+    // Sort versions.
+    versions = versions
+        .map(double.parse)
+        .sorted((a, b) => b.compareTo(a))
+        .map((e) => e.toString())
+        .toList();
+
+    // Update front matter of files.
+    var weight = 2;
+    for (final version in versions) {
+      final file = File(
+        p.join(hugoContentBaseDir.path, websiteBuildDirectoryName, version, '_index.md'),
+      );
+      final md = await file.readAsString();
+
+      var (frontMatter, content) = splitFrontMatterAndContent(md);
+
+      frontMatter = editFrontMatter(frontMatter, {'weight': '$weight'});
+
+      await file.writeAsString(
+        joinFrontMatterAndContent(frontMatter, content),
+      );
+
+      weight++;
+    }
+  }
+
+  /// Add canonical field to repeated pages between versions.
+  Future<void> _addCanonicalToRepeatedPages() async {
+    final dir = Directory(p.join(hugoContentBaseDir.path, websiteBuildDirectoryName));
+
+    // Get all version from directories names.
+    var versions = <String>[];
+    for (final versionDir in dir.listSync().whereType<Directory>()) {
+      final dirName = p.basename(versionDir.path);
+      if (double.tryParse(dirName) != null && !versions.contains(dirName)) versions.add(dirName);
+    }
+
+    // Sort versions.
+    versions = versions
+        .map(double.parse)
+        .sorted((a, b) => b.compareTo(a))
+        .map((e) => e.toString())
+        .toList();
+
+    // Get all repeated paths.
+    final allPaths = <String>{};
+    final repeatedPaths = <String>{};
+    for (final file in dir.listSync(recursive: true).whereType<File>()) {
+      final filePath = file.path.substring(dir.path.length);
+      if (filePath.endsWith('_index.md')) continue;
+      final versionRelativePath = filePath.substring(filePath.indexOf('/', 1));
+
+      if (allPaths.contains(versionRelativePath)) repeatedPaths.add(versionRelativePath);
+      allPaths.add(versionRelativePath);
+    }
+
+    // Find the greatest version of each repeated path.
+    final repeatedPathsVersion = <String, String>{};
+    for (final version in versions) {
+      final versionDir = Directory(p.join(dir.path, version));
+      for (final file in versionDir.listSync(recursive: true).whereType<File>()) {
+        final filePath = file.path.substring(dir.path.length);
+        if (filePath.endsWith('_index.md')) continue;
+        final versionRelativePath = filePath.substring(filePath.indexOf('/', 1));
+
+        if (repeatedPaths.contains(versionRelativePath) &&
+            !repeatedPathsVersion.containsKey(versionRelativePath)) {
+          repeatedPathsVersion[versionRelativePath] = version;
+        }
+      }
+    }
+
+    // Edit front matter of repeated files.
+    for (final file in dir.listSync(recursive: true).whereType<File>()) {
+      final filePath = file.path.substring(dir.path.length);
+      if (filePath.endsWith('_index.md')) continue;
+      final version = filePath.substring(1, filePath.indexOf('/', 1));
+      final versionRelativePath = filePath.substring(filePath.indexOf('/', 1));
+
+      if (repeatedPathsVersion.containsKey(versionRelativePath) &&
+          repeatedPathsVersion[versionRelativePath] != version) {
+        final canonicalVersion = repeatedPathsVersion[versionRelativePath];
+        final canonicalPath = p.join(
+          '/',
+          websiteBuildDirectoryName,
+          canonicalVersion,
+          versionRelativePath.substring(1, versionRelativePath.length - 3), // Without trailing .md
+        );
+
+        final md = await file.readAsString();
+
+        var (frontMatter, content) = splitFrontMatterAndContent(md);
+
+        frontMatter = editFrontMatter(frontMatter, {'canonical': canonicalPath});
+
+        await file.writeAsString(
+          joinFrontMatterAndContent(frontMatter, content),
+        );
+      }
+    }
   }
 }
